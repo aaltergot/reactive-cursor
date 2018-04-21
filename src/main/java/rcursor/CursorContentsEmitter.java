@@ -140,13 +140,9 @@ public final class CursorContentsEmitter<T> implements Consumer<FluxSink<T>> {
                                 T next = null;
                                 while (next == null
                                        && (!queue.isEmpty() || state.isInProgress())) {
-                                    try {
-                                        // if producer is slower than consumer
-                                        // the queue may be empty
-                                        next = queue.poll(queueMillis, MILLISECONDS);
-                                    } catch (Throwable e) {
-                                        state.exception(e);
-                                    }
+                                    // if producer is slower than consumer
+                                    // the queue may be empty
+                                    next = queue.poll(queueMillis, MILLISECONDS);
                                 }
                                 if (next != null && !sink.isCancelled()) {
                                     sink.next(next);
@@ -164,7 +160,7 @@ public final class CursorContentsEmitter<T> implements Consumer<FluxSink<T>> {
         if (!sink.isCancelled()) {
             if (state.isTerminated()) {
                 sink.complete();
-            } else if(state.isException()) {
+            } else if (state.isException()) {
                 sink.error(state.getException());
             }
         }
@@ -174,34 +170,26 @@ public final class CursorContentsEmitter<T> implements Consumer<FluxSink<T>> {
         final ResultSet rs,
         final CursorState state,
         final BlockingDeque<T> queue
-    ) {
-        try {
-            while (state.isInProgress() && rs.next()) {
-                boolean added = false;
-                while (!added && state.isInProgress()) {
-                    // if consumer is slower than producer the queue may be full
-                    added = queue.offer(rsMapping.mapNext(rs), queueMillis, MILLISECONDS);
-                }
+    ) throws Exception {
+        while (state.isInProgress() && rs.next()) {
+            boolean added = false;
+            while (!added && state.isInProgress()) {
+                // if consumer is slower than producer the queue may be full
+                added = queue.offer(rsMapping.mapNext(rs), queueMillis, MILLISECONDS);
             }
-            state.terminate();
-        } catch (Throwable e) {
-            state.exception(e);
         }
+        state.terminate();
     }
 
     private void readResultSetSync(
         final ResultSet rs,
         final CursorState state,
         final FluxSink<T> sink
-    ) {
-        try {
-            while (state.isInProgress() && rs.next()) {
-                sink.next(rsMapping.mapNext(rs));
-            }
-            state.terminate();
-        } catch (Throwable e) {
-            state.exception(e);
+    ) throws Exception {
+        while (state.isInProgress() && rs.next()) {
+            sink.next(rsMapping.mapNext(rs));
         }
+        state.terminate();
     }
 
     private static final class CursorState {
