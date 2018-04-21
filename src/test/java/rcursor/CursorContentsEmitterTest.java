@@ -31,44 +31,48 @@ import static org.mockito.Mockito.*;
  */
 class CursorContentsEmitterTest {
 
-    private final String sql = "select 1";
-    private final Connection con = mock(Connection.class);
-    private final ConnectionSupplier conSupplier = mock(ConnectionSupplier.class);
-    private final ConnectionDisposer conDisposer = mock(ConnectionDisposer.class);
-    private final PSCreator psCreator = mock(PSCreator.class);
-    @SuppressWarnings("unchecked")
-    private final RSMapping<Entity> rsMapping = mock(RSMapping.class);
-    private final PreparedStatement ps = mock(PreparedStatement.class);
-    private final ResultSet rs = mock(ResultSet.class);
+    private static final String SQL = "select 1";
+    private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(1);
+    private static final Times ONCE = new Times(1);
+    private static final Times TWICE = new Times(2);
 
-    private final Times once = new Times(1);
-    private final Times twice = new Times(2);
-
-    private static final ExecutorService executor = Executors.newFixedThreadPool(1);
+    private Connection con;
+    private ConnectionSupplier conSupplier;
+    private ConnectionDisposer conDisposer;
+    private PSCreator psCreator;
+    private RSMapping<Entity> rsMapping;
+    private PreparedStatement ps;
+    private ResultSet rs;
 
     @AfterAll
     static void afterAll() throws Exception {
-        executor.shutdown();
-        executor.awaitTermination(1, TimeUnit.SECONDS);
+        EXECUTOR.shutdown();
+        EXECUTOR.awaitTermination(1, TimeUnit.SECONDS);
     }
 
     @BeforeEach
+    @SuppressWarnings("unchecked")
     void beforeEach() throws Exception {
-        reset(con, conSupplier, conDisposer, psCreator, rsMapping, ps, rs);
+        con = mock(Connection.class);
+        conSupplier = mock(ConnectionSupplier.class);
+        conDisposer = mock(ConnectionDisposer.class);
+        psCreator = mock(PSCreator.class);
+        rsMapping = mock(RSMapping.class);
+        ps = mock(PreparedStatement.class);
+        rs = mock(ResultSet.class);
         when(conSupplier.get()).thenReturn(con);
         doAnswer(inv -> { ((Connection) inv.getArgument(0)).close(); return null; })
             .when(conDisposer).dispose(con);
-        doAnswer(inv -> ((Connection) inv.getArgument(0)).prepareStatement(sql))
+        doAnswer(inv -> ((Connection) inv.getArgument(0)).prepareStatement(SQL))
             .when(psCreator).create(con);
         doAnswer(inv -> mapEntity((inv.getArgument(0)))).when(rsMapping).mapNext(rs);
-        when(con.prepareStatement(sql)).thenReturn(ps);
+        when(con.prepareStatement(SQL)).thenReturn(ps);
         when(ps.execute()).thenReturn(true);
         when(ps.getResultSet()).thenReturn(rs);
     }
 
     /** Side effect. Makes {@link #rs} to return 1 row. */
     private void setupOneEntityRS() throws Exception {
-        reset(rs);
         when(rs.next())
             .thenAnswer(inv -> {
                 Thread.sleep(100);
@@ -77,12 +81,11 @@ class CursorContentsEmitterTest {
             .thenReturn(false);
         when(rs.getString(1))
             .thenReturn("id1")
-            .thenThrow(new SQLException("No more results, shouldn't be here"));
+            .thenThrow(new SQLException("No more results"));
     }
 
     /** Side effect. Makes {@link #rs} to return 2 rows. */
     private void setupTwoEntitiesRS() throws Exception {
-        reset(rs);
         when(rs.next())
             .thenReturn(true)
             .thenReturn(true)
@@ -110,20 +113,20 @@ class CursorContentsEmitterTest {
             .expectNext(new Entity("id1"))
             .verifyComplete();
 
-        verify(con, once).prepareStatement(sql);
-        verify(con, once).close();
+        verify(con, ONCE).prepareStatement(SQL);
+        verify(con, ONCE).close();
 
-        verify(ps, once).execute();
-        verify(ps, once).getResultSet();
-        verify(ps, once).close();
+        verify(ps, ONCE).execute();
+        verify(ps, ONCE).getResultSet();
+        verify(ps, ONCE).close();
 
-        verify(rs, twice).next();
-        verify(rs, once).getString(1);
-        verify(rs, once).close();
+        verify(rs, TWICE).next();
+        verify(rs, ONCE).getString(1);
+        verify(rs, ONCE).close();
 
-        verify(conSupplier, once).get();
-        verify(conDisposer, once).dispose(con);
-        verify(rsMapping, once).mapNext(rs);
+        verify(conSupplier, ONCE).get();
+        verify(conDisposer, ONCE).dispose(con);
+        verify(rsMapping, ONCE).mapNext(rs);
 
         verifyNoMoreInteractions(rs, ps, con, conSupplier, conDisposer, rsMapping);
     }
@@ -135,7 +138,7 @@ class CursorContentsEmitterTest {
             ConnectionManager.from(conSupplier, conDisposer),
             psCreator,
             rsMapping,
-            executor,
+            EXECUTOR,
             10,
             100L
         );
@@ -145,20 +148,20 @@ class CursorContentsEmitterTest {
             .expectNext(new Entity("id1"))
             .verifyComplete();
 
-        verify(con, once).prepareStatement(sql);
-        verify(con, once).close();
+        verify(con, ONCE).prepareStatement(SQL);
+        verify(con, ONCE).close();
 
-        verify(ps, once).execute();
-        verify(ps, once).getResultSet();
-        verify(ps, once).close();
+        verify(ps, ONCE).execute();
+        verify(ps, ONCE).getResultSet();
+        verify(ps, ONCE).close();
 
-        verify(rs, twice).next();
-        verify(rs, once).getString(1);
-        verify(rs, once).close();
+        verify(rs, TWICE).next();
+        verify(rs, ONCE).getString(1);
+        verify(rs, ONCE).close();
 
-        verify(conSupplier, once).get();
-        verify(conDisposer, once).dispose(con);
-        verify(rsMapping, once).mapNext(rs);
+        verify(conSupplier, ONCE).get();
+        verify(conDisposer, ONCE).dispose(con);
+        verify(rsMapping, ONCE).mapNext(rs);
 
         verifyNoMoreInteractions(rs, ps, con, conSupplier, conDisposer, rsMapping);
     }
@@ -177,7 +180,7 @@ class CursorContentsEmitterTest {
             ConnectionManager.from(conSupplier, conDisposer),
             psCreator,
             rsMapping,
-            executor
+            EXECUTOR
         );
 
         StepVerifier.create(Flux.create(emitter))
@@ -185,20 +188,20 @@ class CursorContentsEmitterTest {
             .expectNext(new Entity("id1"))
             .verifyErrorMessage("Oops");
 
-        verify(con, once).prepareStatement(sql);
-        verify(con, once).close();
+        verify(con, ONCE).prepareStatement(SQL);
+        verify(con, ONCE).close();
 
-        verify(ps, once).execute();
-        verify(ps, once).getResultSet();
-        verify(ps, once).close();
+        verify(ps, ONCE).execute();
+        verify(ps, ONCE).getResultSet();
+        verify(ps, ONCE).close();
 
-        verify(rs, twice).next();
-        verify(rs, twice).getString(1);
-        verify(rs, once).close();
+        verify(rs, TWICE).next();
+        verify(rs, TWICE).getString(1);
+        verify(rs, ONCE).close();
 
-        verify(conSupplier, once).get();
-        verify(conDisposer, once).dispose(con);
-        verify(rsMapping, twice).mapNext(rs);
+        verify(conSupplier, ONCE).get();
+        verify(conDisposer, ONCE).dispose(con);
+        verify(rsMapping, TWICE).mapNext(rs);
 
         verifyNoMoreInteractions(rs, ps, con, conSupplier, conDisposer, rsMapping);
     }
@@ -211,20 +214,20 @@ class CursorContentsEmitterTest {
             ConnectionManager.from(conSupplier, conDisposer),
             psCreator,
             rsMapping,
-            executor
+            EXECUTOR
         );
         StepVerifier.create(Flux.create(emitter))
             .expectSubscription()
             .verifyErrorMessage("Oops");
 
-        verify(con, once).prepareStatement(sql);
-        verify(con, once).close();
+        verify(con, ONCE).prepareStatement(SQL);
+        verify(con, ONCE).close();
 
-        verify(ps, once).execute();
-        verify(ps, once).close();
+        verify(ps, ONCE).execute();
+        verify(ps, ONCE).close();
 
-        verify(conSupplier, once).get();
-        verify(conDisposer, once).dispose(con);
+        verify(conSupplier, ONCE).get();
+        verify(conDisposer, ONCE).dispose(con);
 
         verifyNoMoreInteractions(rs, ps, con, conSupplier, conDisposer, rsMapping);
     }
@@ -232,22 +235,22 @@ class CursorContentsEmitterTest {
     @Test
     void prepareStatementFailure() throws Exception {
         reset(con);
-        when(con.prepareStatement(sql)).thenThrow(new SQLException("Oops"));
+        when(con.prepareStatement(SQL)).thenThrow(new SQLException("Oops"));
         final CursorContentsEmitter<Entity> emitter = CursorContentsEmitter.create(
             ConnectionManager.from(conSupplier, conDisposer),
             psCreator,
             rsMapping,
-            executor
+            EXECUTOR
         );
         StepVerifier.create(Flux.create(emitter))
             .expectSubscription()
             .verifyErrorMessage("Oops");
 
-        verify(con, once).prepareStatement(sql);
-        verify(con, once).close();
+        verify(con, ONCE).prepareStatement(SQL);
+        verify(con, ONCE).close();
 
-        verify(conSupplier, once).get();
-        verify(conDisposer, once).dispose(con);
+        verify(conSupplier, ONCE).get();
+        verify(conDisposer, ONCE).dispose(con);
 
         verifyNoMoreInteractions(rs, ps, con, conSupplier, conDisposer, rsMapping);
     }
@@ -259,7 +262,7 @@ class CursorContentsEmitterTest {
             ConnectionManager.from(conSupplier, conDisposer),
             psCreator,
             rsMapping,
-            executor
+            EXECUTOR
         );
 
         final AtomicReference<Entity> first = new AtomicReference<>();
@@ -281,20 +284,20 @@ class CursorContentsEmitterTest {
         assertEquals(error.get().getMessage(), "Oops");
         assertFalse(completed.get());
 
-        verify(con, once).prepareStatement(sql);
-        verify(con, once).close();
+        verify(con, ONCE).prepareStatement(SQL);
+        verify(con, ONCE).close();
 
-        verify(ps, once).execute();
-        verify(ps, once).getResultSet();
-        verify(ps, once).close();
+        verify(ps, ONCE).execute();
+        verify(ps, ONCE).getResultSet();
+        verify(ps, ONCE).close();
 
         verify(rs, new Times(3)).next();
-        verify(rs, twice).getString(1);
-        verify(rs, once).close();
+        verify(rs, TWICE).getString(1);
+        verify(rs, ONCE).close();
 
-        verify(conSupplier, once).get();
-        verify(conDisposer, once).dispose(con);
-        verify(rsMapping, twice).mapNext(rs);
+        verify(conSupplier, ONCE).get();
+        verify(conDisposer, ONCE).dispose(con);
+        verify(rsMapping, TWICE).mapNext(rs);
 
         verifyNoMoreInteractions(rs, ps, con, conSupplier, conDisposer, rsMapping);
     }
@@ -307,7 +310,7 @@ class CursorContentsEmitterTest {
             ConnectionManager.from(conSupplier, conDisposer),
             psCreator,
             rsMapping,
-            executor
+            EXECUTOR
         );
 
         StepVerifier.create(Flux.create(emitter))
@@ -317,20 +320,20 @@ class CursorContentsEmitterTest {
             .thenCancel()
             .verify();
 
-        verify(con, once).prepareStatement(sql);
-        verify(con, once).close();
+        verify(con, ONCE).prepareStatement(SQL);
+        verify(con, ONCE).close();
 
-        verify(ps, once).execute();
-        verify(ps, once).getResultSet();
-        verify(ps, once).close();
+        verify(ps, ONCE).execute();
+        verify(ps, ONCE).getResultSet();
+        verify(ps, ONCE).close();
 
         verify(rs, new Times(3)).next();
-        verify(rs, twice).getString(1);
-        verify(rs, once).close();
+        verify(rs, TWICE).getString(1);
+        verify(rs, ONCE).close();
 
-        verify(conSupplier, once).get();
-        verify(conDisposer, once).dispose(con);
-        verify(rsMapping, twice).mapNext(rs);
+        verify(conSupplier, ONCE).get();
+        verify(conDisposer, ONCE).dispose(con);
+        verify(rsMapping, TWICE).mapNext(rs);
 
         verifyNoMoreInteractions(rs, ps, con, conSupplier, conDisposer, rsMapping);
     }
