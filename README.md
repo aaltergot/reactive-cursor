@@ -8,7 +8,7 @@ Another goal is to avoid I/O blocking serialization. All JDBC actions block the 
 For instance, we query something in the database, transform rows into JSONs, then send them somewhere over HTTP. In single-threaded environment this would mean that the worker thread blocks on read operation waiting for a meaningful
 chunk of data to come, applies some transformations, then blocks again until write operation is completed. Starts over with the blocking read and so on. With multiple threads there is no need to wait each other.
 
-But multi-threading requires good abstractions to juggle the data safely and easily. This library is an attempt to provide such abstractions standing on [Project Reactor](https://projectreactor.io) foundation, helping to deal effectively with massive ETL routines.
+But multi-threading requires good abstractions to juggle the data safely and easily. This library is an attempt to provide such abstractions standing on [Project Reactor](https://projectreactor.io) foundation, helping to deal efficiently with massive ETL routines.
 
 ## Usage
 ### Read RDBMS Cursor
@@ -34,3 +34,5 @@ Having `my_table` populated with some `Entities` we are looking for `Flux<Entity
 7: `forwardOnlyQuery` makes a function that produces `PreparedStatement` with necessary configuration. For PostgreSQL to create a cursor on database side it is required that connection is no-autocommit and the statement is created with `TYPE_FORWARD_ONLY` flag. Refer to `PostgreSQLHelper` utility class. Other databases may require something else to be configured for that purpose.  
 8: Just a lambda that transforms current row into `Entity`. One may find convenient to pass method reference here.  
 9: Result set fetching procedure will be submitted to provided `executor`. A good idea is to have a thread pool instance for this purpose.
+
+See also `CursorContentsEmitterTest` for usage examples.
