@@ -73,6 +73,7 @@ class CursorContentsEmitterTest {
 
     /** Side effect. Makes {@link #rs} to return 1 row. */
     private void setupOneEntityRS() throws Exception {
+        reset(rs);
         when(rs.next())
             .thenAnswer(inv -> {
                 Thread.sleep(100);
@@ -86,6 +87,7 @@ class CursorContentsEmitterTest {
 
     /** Side effect. Makes {@link #rs} to return 2 rows. */
     private void setupTwoEntitiesRS() throws Exception {
+        reset(rs);
         when(rs.next())
             .thenReturn(true)
             .thenReturn(true)
@@ -93,7 +95,7 @@ class CursorContentsEmitterTest {
         when(rs.getString(1))
             .thenReturn("id1")
             .thenReturn("id2")
-            .thenThrow(new SQLException("No more results, shouldn't be here"));
+            .thenThrow(new SQLException("No more results"));
     }
 
     @Test
