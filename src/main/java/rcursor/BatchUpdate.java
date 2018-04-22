@@ -20,7 +20,7 @@ import reactor.core.publisher.Mono;
 /**
  * BatchUpdate.
  */
-public class BatchUpdate<T> implements Function<Flux<T>, Publisher<T>> {
+public final class BatchUpdate<T> implements Function<Flux<T>, Publisher<T>> {
 
     private static final int DEFAULT_BATCH_SIZE = 4096;
 
