@@ -7,6 +7,7 @@ import java.sql.SQLException;
 /**
  * PSCreator.
  */
+@FunctionalInterface
 public interface PSCreator {
     PreparedStatement create(Connection con) throws SQLException;
 }

@@ -151,9 +151,10 @@ public final class CursorContentsEmitter<T> implements Consumer<FluxSink<T>> {
                         }
                     }
                 }
-            } finally {
-                conMgr.dispose(con);
+            } catch (Throwable e) {
+                state.exception(e);
             }
+            conMgr.dispose(con, state.isException());
         } catch (Throwable e) {
             state.exception(e);
         }
@@ -195,11 +196,12 @@ public final class CursorContentsEmitter<T> implements Consumer<FluxSink<T>> {
     private static final class CursorState {
         private int s = 0; // 0-in progress, 1-terminated gracefully, 2-exception, 3-cancelled
         private Throwable ex = null;
+        private CursorState() {}
         synchronized boolean isInProgress() { return s == 0; }
         synchronized boolean isTerminated() { return s == 1; }
         synchronized boolean isException() { return s == 2; }
         synchronized void terminate() { if (s == 0) s = 1; }
-        synchronized void exception(Throwable e) { if (s == 0) { s = 2; ex = e; } }
+        synchronized void exception(Throwable e) { s = 2; ex = e; }
         synchronized void cancel() { s = 3; }
         synchronized Throwable getException() { return ex; }
     }

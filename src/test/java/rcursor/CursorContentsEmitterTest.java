@@ -5,16 +5,17 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
-import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.internal.verification.Times;
+import org.mockito.stubbing.OngoingStubbing;
 import rcursor.function.ConnectionDisposer;
 import rcursor.function.ConnectionManager;
 import rcursor.function.ConnectionSupplier;
@@ -25,13 +26,14 @@ import reactor.test.StepVerifier;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
+import static rcursor.Entity.mapEntity;
 
 /**
  * CursorContentsEmitterTest.
  */
 class CursorContentsEmitterTest {
 
-    private static final String SQL = "select 1";
+    private static final String SQL = "select id from my_table";
     private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(1);
     private static final Times ONCE = new Times(1);
     private static final Times TWICE = new Times(2);
@@ -62,45 +64,32 @@ class CursorContentsEmitterTest {
         rs = mock(ResultSet.class);
         when(conSupplier.get()).thenReturn(con);
         doAnswer(inv -> { ((Connection) inv.getArgument(0)).close(); return null; })
-            .when(conDisposer).dispose(con);
+            .when(conDisposer).dispose(any(), anyBoolean());
         doAnswer(inv -> ((Connection) inv.getArgument(0)).prepareStatement(SQL))
-            .when(psCreator).create(con);
-        doAnswer(inv -> mapEntity((inv.getArgument(0)))).when(rsMapping).mapNext(rs);
+            .when(psCreator).create(any());
+        doAnswer(inv -> mapEntity((inv.getArgument(0)))).when(rsMapping).mapNext(any());
         when(con.prepareStatement(SQL)).thenReturn(ps);
         when(ps.execute()).thenReturn(true);
         when(ps.getResultSet()).thenReturn(rs);
     }
 
-    /** Side effect. Makes {@link #rs} to return 1 row. */
-    private void setupOneEntityRS() throws Exception {
+    /** Side effect. Makes {@link #rs} to return specified number of rows. */
+    private void setupResultSetRows(final int count) throws Exception {
         reset(rs);
-        when(rs.next())
-            .thenAnswer(inv -> {
-                Thread.sleep(100);
-                return true;
-            })
-            .thenReturn(false);
-        when(rs.getString(1))
-            .thenReturn("id1")
-            .thenThrow(new SQLException("No more results"));
-    }
-
-    /** Side effect. Makes {@link #rs} to return 2 rows. */
-    private void setupTwoEntitiesRS() throws Exception {
-        reset(rs);
-        when(rs.next())
-            .thenReturn(true)
-            .thenReturn(true)
-            .thenReturn(false);
-        when(rs.getString(1))
-            .thenReturn("id1")
-            .thenReturn("id2")
-            .thenThrow(new SQLException("No more results"));
+        OngoingStubbing<Boolean> next = when(rs.next());
+        for (int i = 1; i <= count; i++) {
+            next = next.thenReturn(true);
+        }
+        next.thenReturn(false);
+        OngoingStubbing<String> getString = when(rs.getString(1));
+        for (int i = 1; i <= count; i++) {
+            getString = getString.thenReturn("id" + i);
+        }
     }
 
     @Test
     void successSync() throws Exception {
-        setupOneEntityRS();
+        setupResultSetRows(1);
         final CursorContentsEmitter<Entity> emitter = new CursorContentsEmitter<>(
             ConnectionManager.from(conSupplier, conDisposer),
             psCreator,
@@ -127,7 +116,7 @@ class CursorContentsEmitterTest {
         verify(rs, ONCE).close();
 
         verify(conSupplier, ONCE).get();
-        verify(conDisposer, ONCE).dispose(con);
+        verify(conDisposer, ONCE).dispose(con, false);
         verify(rsMapping, ONCE).mapNext(rs);
 
         verifyNoMoreInteractions(rs, ps, con, conSupplier, conDisposer, rsMapping);
@@ -135,7 +124,7 @@ class CursorContentsEmitterTest {
 
     @Test
     void successAsync() throws Exception {
-        setupOneEntityRS();
+        setupResultSetRows(1);
         final CursorContentsEmitter<Entity> emitter = new CursorContentsEmitter<>(
             ConnectionManager.from(conSupplier, conDisposer),
             psCreator,
@@ -162,7 +151,7 @@ class CursorContentsEmitterTest {
         verify(rs, ONCE).close();
 
         verify(conSupplier, ONCE).get();
-        verify(conDisposer, ONCE).dispose(con);
+        verify(conDisposer, ONCE).dispose(con, false);
         verify(rsMapping, ONCE).mapNext(rs);
 
         verifyNoMoreInteractions(rs, ps, con, conSupplier, conDisposer, rsMapping);
@@ -202,7 +191,7 @@ class CursorContentsEmitterTest {
         verify(rs, ONCE).close();
 
         verify(conSupplier, ONCE).get();
-        verify(conDisposer, ONCE).dispose(con);
+        verify(conDisposer, ONCE).dispose(con, true);
         verify(rsMapping, TWICE).mapNext(rs);
 
         verifyNoMoreInteractions(rs, ps, con, conSupplier, conDisposer, rsMapping);
@@ -229,7 +218,7 @@ class CursorContentsEmitterTest {
         verify(ps, ONCE).close();
 
         verify(conSupplier, ONCE).get();
-        verify(conDisposer, ONCE).dispose(con);
+        verify(conDisposer, ONCE).dispose(con, true);
 
         verifyNoMoreInteractions(rs, ps, con, conSupplier, conDisposer, rsMapping);
     }
@@ -252,14 +241,14 @@ class CursorContentsEmitterTest {
         verify(con, ONCE).close();
 
         verify(conSupplier, ONCE).get();
-        verify(conDisposer, ONCE).dispose(con);
+        verify(conDisposer, ONCE).dispose(con, true);
 
         verifyNoMoreInteractions(rs, ps, con, conSupplier, conDisposer, rsMapping);
     }
 
     @Test
     void sinkFailure() throws Exception {
-        setupTwoEntitiesRS();
+        setupResultSetRows(2);
         final CursorContentsEmitter<Entity> emitter = CursorContentsEmitter.create(
             ConnectionManager.from(conSupplier, conDisposer),
             psCreator,
@@ -298,7 +287,7 @@ class CursorContentsEmitterTest {
         verify(rs, ONCE).close();
 
         verify(conSupplier, ONCE).get();
-        verify(conDisposer, ONCE).dispose(con);
+        verify(conDisposer, ONCE).dispose(con, false);
         verify(rsMapping, TWICE).mapNext(rs);
 
         verifyNoMoreInteractions(rs, ps, con, conSupplier, conDisposer, rsMapping);
@@ -306,8 +295,7 @@ class CursorContentsEmitterTest {
 
     @Test
     void sinkCancel() throws Exception {
-        setupTwoEntitiesRS();
-
+        setupResultSetRows(2);
         final CursorContentsEmitter<Entity> emitter = CursorContentsEmitter.create(
             ConnectionManager.from(conSupplier, conDisposer),
             psCreator,
@@ -334,36 +322,44 @@ class CursorContentsEmitterTest {
         verify(rs, ONCE).close();
 
         verify(conSupplier, ONCE).get();
-        verify(conDisposer, ONCE).dispose(con);
+        verify(conDisposer, ONCE).dispose(con, false);
         verify(rsMapping, TWICE).mapNext(rs);
 
         verifyNoMoreInteractions(rs, ps, con, conSupplier, conDisposer, rsMapping);
     }
 
-    private static Entity mapEntity(final ResultSet rs) throws SQLException {
-        return new Entity(rs.getString(1));
+    @Test
+    void commitFailure() throws Exception {
+        setupResultSetRows(1);
+        doThrow(new SQLException("Oops")).when(con).commit();
+        final DataSource dataSource = mock(DataSource.class);
+        when(dataSource.getConnection()).thenReturn(con);
+        final CursorContentsEmitter<Entity> emitter = CursorContentsEmitter.create(
+            ConnectionManager.withTransaction(dataSource),
+            psCreator,
+            rsMapping,
+            EXECUTOR
+        );
+        StepVerifier.create(Flux.create(emitter))
+            .expectSubscription()
+            .expectNextCount(1)
+            .verifyErrorMessage("Oops");
+
+        verify(con, ONCE).prepareStatement(SQL);
+        verify(con, ONCE).setAutoCommit(false);
+        verify(con, ONCE).commit();
+        verify(con, ONCE).close();
+
+        verify(ps, ONCE).execute();
+        verify(ps, ONCE).getResultSet();
+        verify(ps, ONCE).close();
+
+        verify(rs, TWICE).next();
+        verify(rs, ONCE).getString(1);
+        verify(rs, ONCE).close();
+
+        verify(rsMapping, ONCE).mapNext(rs);
+
+        verifyNoMoreInteractions(rs, ps, con, conSupplier, conDisposer, rsMapping);
     }
-
-    private static class Entity {
-
-        String id;
-
-        Entity(final String id) {
-            this.id = id;
-        }
-
-        @Override
-        public boolean equals(final Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-            final Entity entity = (Entity) o;
-            return Objects.equals(id, entity.id);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(id);
-        }
-    }
-
 }

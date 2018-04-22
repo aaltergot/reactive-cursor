@@ -14,25 +14,40 @@ But multi-threading requires good abstractions to juggle the data safely and eas
 ### Read RDBMS Cursor
 Having `my_table` populated with some `Entities` we are looking for `Flux<Entity>`. Other cool stuff a developer implements using Flux API.
 ```
-1  final Flux<Entity> entities = Flux.create(
-2     CursorContentsEmitter.create(
-3         ConnectionManager.from(
-4             txConnection(dataSource),
-5             Connection::close
-6         ),
-7         forwardOnlyQuery("select * from my_table"),
-8         resultSet -> new Entity(resultSet.getInt("id")),
-9         executor
-10 ));
+1   Flux<Entity> entities = Flux.create(
+2      CursorContentsEmitter.create(
+3          ConnectionManager.withTransaction(dataSource),
+4          forwardOnlyQuery("select * from my_table"),
+5          resultSet -> new Entity(resultSet.getInt("id")),
+6          executor
+7   ));
 
 ```
 1: Creating a Flux using Flux.create() method. It accepts `Consumer<FluxSink<T>>` which is satisfied by the `CursorContentsEmitter`.  
 2: `CursorContentsEmitter` has a convenient factory method that drops in some default values. One may use a constructor instead. See the javadoc.  
-3: `ConnectionManager` is really just two functions combined together. See the javadoc.  
-4: `txConnection` returns a closure on the `dataSource` that would produce new no-autocommit connection every time.  
-5: Dispose action when a connection is not needed anymore. One may want to keep the connection open for further processing and pass empty lambda here.  
-7: `forwardOnlyQuery` makes a function that produces `PreparedStatement` with necessary configuration. For PostgreSQL to create a cursor on database side it is required that connection is no-autocommit and the statement is created with `TYPE_FORWARD_ONLY` flag. Refer to `PostgreSQLHelper` utility class. Other databases may require something else to be configured for that purpose.  
-8: Just a lambda that transforms current row into `Entity`. One may find convenient to pass method reference here.  
-9: Result set fetching procedure will be submitted to provided `executor`. A good idea is to have a thread pool instance for this purpose.
+3: `ConnectionManager` is really just two functions combined together. See the javadoc. `ConnectionManager.withTransaction` returns a closure on the `dataSource` that would produce new no-autocommit connection every time, commit/rollback when disposed.  
+4: `forwardOnlyQuery` makes a function that produces `PreparedStatement` with necessary configuration. For PostgreSQL to create a cursor on database side it is required that connection is no-autocommit and the statement is created with `TYPE_FORWARD_ONLY` flag. Refer to `PostgreSQLHelper` utility class. Other databases may require something else to be configured for that purpose.  
+5: Just a lambda that transforms current row into `Entity`. One may find convenient to pass method reference here.  
+6: Result set fetching procedure will be submitted to provided `executor`. A good idea is to have a thread pool instance for this purpose.
 
 See also `CursorContentsEmitterTest` for usage examples.
+
+### Batch Insert or Update
+Following construction will send all entities to the database in batches of default size.
+```
+    DataSource dataSource = ...
+    Flux<Entity> entities = ...
+    BatchUpdate<Entity> batchUpdate = BatchUpdate.create(
+        ConnectionManager.withTransaction(dataSource),
+        con -> con.prepareStatement("insert into my_table (id) values (?)"),
+        (ps, entity) -> ps.setString(1, entity.id)
+    );
+    entities.compose(batchUpdate).subscribe();
+```
+One may want to get and inspect batch update results:
+```
+    // value will appear onces completed (successfully or not)
+    Mono<BatchUpdate.State> stateMono = batchUpdate.completion();
+    // inspect progress on the fly
+    BatchUpdate.State state = batchUpdate.currentState();
+```

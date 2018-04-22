@@ -6,6 +6,7 @@ import java.sql.SQLException;
 /**
  * ConnectionDisposer.
  */
+@FunctionalInterface
 public interface ConnectionDisposer {
-    void dispose(Connection con) throws SQLException;
+    void dispose(Connection con, boolean wasError) throws SQLException;
 }
