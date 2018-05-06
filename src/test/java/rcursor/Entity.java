@@ -4,6 +4,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Objects;
+import reactor.core.publisher.Flux;
 
 /**
  * Entity.
@@ -24,6 +25,18 @@ public class Entity {
         final Entity entity
     ) throws SQLException {
         ps.setString(1, entity.id);
+    }
+
+    public static Flux<Entity> make(final int count) {
+        return Flux
+            .<Entity, Integer>generate(
+                () -> 1,
+                (i, sink) -> {
+                    sink.next(new Entity("id" + i));
+                    return i + 1;
+                }
+            )
+            .take(count);
     }
 
     @Override

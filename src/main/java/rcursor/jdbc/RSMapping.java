@@ -1,4 +1,4 @@
-package rcursor.function;
+package rcursor.jdbc;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;

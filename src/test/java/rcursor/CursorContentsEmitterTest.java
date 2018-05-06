@@ -16,11 +16,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.internal.verification.Times;
 import org.mockito.stubbing.OngoingStubbing;
-import rcursor.function.ConnectionDisposer;
-import rcursor.function.ConnectionManager;
-import rcursor.function.ConnectionSupplier;
-import rcursor.function.PSCreator;
-import rcursor.function.RSMapping;
+import rcursor.jdbc.ConnectionDisposer;
+import rcursor.jdbc.ConnectionManager;
+import rcursor.jdbc.ConnectionSupplier;
+import rcursor.jdbc.PSCreator;
+import rcursor.jdbc.RSMapping;
 import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
 

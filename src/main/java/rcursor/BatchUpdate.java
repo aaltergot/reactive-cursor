@@ -10,9 +10,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 import java.util.stream.IntStream;
 import org.reactivestreams.Publisher;
-import rcursor.function.ConnectionManager;
-import rcursor.function.PSCreator;
-import rcursor.function.PSMapping;
+import rcursor.jdbc.ConnectionManager;
+import rcursor.jdbc.PSCreator;
+import rcursor.jdbc.PSMapping;
 import reactor.core.Exceptions;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -52,6 +52,7 @@ public final class BatchUpdate<T> implements Function<Flux<T>, Publisher<T>> {
         this.alwaysAcquireConnection = alwaysAcquireConnection;
     }
 
+    /** Creates a BatchUpdate with some defaults. */
     public static <R> BatchUpdate<R> create(
         final ConnectionManager conMgr,
         final PSCreator psCreator,

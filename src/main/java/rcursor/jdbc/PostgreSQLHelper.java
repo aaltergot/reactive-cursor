@@ -1,7 +1,6 @@
-package rcursor;
+package rcursor.jdbc;
 
 import java.sql.PreparedStatement;
-import rcursor.function.PSCreator;
 
 import static java.sql.ResultSet.CONCUR_READ_ONLY;
 import static java.sql.ResultSet.TYPE_FORWARD_ONLY;

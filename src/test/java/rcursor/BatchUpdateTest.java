@@ -9,12 +9,11 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.internal.verification.Times;
-import rcursor.function.ConnectionDisposer;
-import rcursor.function.ConnectionManager;
-import rcursor.function.ConnectionSupplier;
-import rcursor.function.PSCreator;
-import rcursor.function.PSMapping;
-import reactor.core.publisher.Flux;
+import rcursor.jdbc.ConnectionDisposer;
+import rcursor.jdbc.ConnectionManager;
+import rcursor.jdbc.ConnectionSupplier;
+import rcursor.jdbc.PSCreator;
+import rcursor.jdbc.PSMapping;
 import reactor.test.StepVerifier;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -66,17 +65,6 @@ class BatchUpdateTest {
         when(ps.executeBatch()).thenReturn(new int[] {1});
     }
 
-    private static Flux<Entity> mkEntities(final int count) {
-        return Flux
-            .<Entity, Integer>generate(
-                () -> 1,
-                (i, sink) -> {
-                    sink.next(new Entity("id" + i));
-                    return i + 1;
-                }
-            )
-            .take(count);
-    }
 
     @Test
     void success() throws Exception {
@@ -88,7 +76,7 @@ class BatchUpdateTest {
             false
         );
 
-        StepVerifier.create(mkEntities(10).compose(batchUpdate))
+        StepVerifier.create(Entity.make(10).compose(batchUpdate))
             .expectSubscription()
             .expectNextCount(10)
             .verifyComplete();
@@ -134,7 +122,7 @@ class BatchUpdateTest {
             psMapping
         );
 
-        StepVerifier.create(mkEntities(2).compose(batchUpdate))
+        StepVerifier.create(Entity.make(2).compose(batchUpdate))
             .expectSubscription()
             .verifyError();
 
@@ -184,7 +172,7 @@ class BatchUpdateTest {
             true
         );
 
-        StepVerifier.create(mkEntities(5).compose(batchUpdate))
+        StepVerifier.create(Entity.make(5).compose(batchUpdate))
             .expectSubscription()
             .expectNextCount(5)
             .verifyComplete();
@@ -227,12 +215,12 @@ class BatchUpdateTest {
             psMapping
         );
 
-        StepVerifier.create(mkEntities(1).compose(batchUpdate))
+        StepVerifier.create(Entity.make(1).compose(batchUpdate))
             .expectSubscription()
             .expectNextCount(1)
             .verifyComplete();
 
-        StepVerifier.create(mkEntities(1).compose(batchUpdate))
+        StepVerifier.create(Entity.make(1).compose(batchUpdate))
             .expectSubscription()
             .verifyError();
     }
@@ -246,7 +234,7 @@ class BatchUpdateTest {
             psMapping
         );
 
-        StepVerifier.create(mkEntities(1).compose(batchUpdate))
+        StepVerifier.create(Entity.make(1).compose(batchUpdate))
             .expectSubscription()
             .expectNextCount(1)
             .verifyError();
@@ -262,7 +250,7 @@ class BatchUpdateTest {
             psMapping
         );
 
-        StepVerifier.create(mkEntities(1).compose(batchUpdate))
+        StepVerifier.create(Entity.make(1).compose(batchUpdate))
             .expectSubscription()
             .expectNextCount(1)
             .verifyError();

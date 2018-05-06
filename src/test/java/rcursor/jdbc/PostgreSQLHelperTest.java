@@ -1,4 +1,4 @@
-package rcursor;
+package rcursor.jdbc;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
