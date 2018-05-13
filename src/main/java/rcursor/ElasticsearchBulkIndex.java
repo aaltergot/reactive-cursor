@@ -16,7 +16,7 @@ import reactor.core.publisher.Mono;
 /**
  * ElasticsearchBulkIndex.
  */
-public class ElasticsearchBulkIndex<T> implements Function<Flux<T>, Publisher<T>> {
+public final class ElasticsearchBulkIndex<T> implements Function<Flux<T>, Publisher<T>> {
 
     private static final int DEFAULT_BULT_SIZE = 1024;
 
