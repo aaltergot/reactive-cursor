@@ -9,9 +9,7 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.internal.verification.Times;
-import rcursor.jdbc.ConnectionDisposer;
 import rcursor.jdbc.ConnectionManager;
-import rcursor.jdbc.ConnectionSupplier;
 import rcursor.jdbc.PSCreator;
 import rcursor.jdbc.PSMapping;
 import reactor.test.StepVerifier;
@@ -29,47 +27,63 @@ class BatchUpdateTest {
     private static final Times TWICE = new Times(2);
 
     private Connection con;
-    private ConnectionSupplier conSupplier;
-    private ConnectionDisposer conDisposer;
+    private ConnectionManager conMgr;
     private PSCreator psCreator;
     private PSMapping<Entity> psMapping;
     private PreparedStatement ps;
 
     @BeforeEach
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({"Convert2Lambda", "Anonymous2MethodRef"})
     void beforeEach() throws Exception {
         con = mock(Connection.class);
-        conSupplier = mock(ConnectionSupplier.class);
-        conDisposer = mock(ConnectionDisposer.class);
-        psCreator = mock(PSCreator.class);
-        psMapping = mock(PSMapping.class);
-        ps = mock(PreparedStatement.class);
-        when(conSupplier.get()).thenReturn(con);
-        doAnswer(inv -> {
-            final Connection con = inv.getArgument(0);
-            if (inv.getArgument(1)) {
-                con.rollback();
-            } else {
-                con.commit();
+        // cannot spy lambdas
+        conMgr = spy(
+            new ConnectionManager() {
+                @Override
+                public void dispose(
+                    final Connection con,
+                    final boolean wasError
+                ) throws SQLException {
+                    if (wasError) {
+                        con.rollback();
+                    } else {
+                        con.commit();
+                    }
+                    con.close();
+                }
+                @Override
+                public Connection get() {
+                    return con;
+                }
             }
-            con.close();
-            return null;
-        }).when(conDisposer).dispose(any(), anyBoolean());
-        doAnswer(inv -> ((Connection) inv.getArgument(0)).prepareStatement(SQL))
-            .when(psCreator).create(any());
-        doAnswer(inv -> {
-            Entity.mapPrepared(inv.getArgument(0), inv.getArgument(1));
-            return null;
-        }).when(psMapping).mapPrepared(any(), any());
+        );
+        psCreator = spy(
+            new PSCreator() {
+                @Override
+                public PreparedStatement create(final Connection con) throws SQLException {
+                    return con.prepareStatement(SQL);
+                }
+            }
+        );
+        psMapping = spy(
+            new PSMapping<Entity>() {
+                @Override
+                public void mapPrepared(
+                    final PreparedStatement ps, final Entity item
+                ) throws SQLException {
+                    Entity.mapPrepared(ps, item);
+                }
+            }
+        );
+        ps = mock(PreparedStatement.class);
         when(con.prepareStatement(SQL)).thenReturn(ps);
         when(ps.executeBatch()).thenReturn(new int[] {1});
     }
 
-
     @Test
     void success() throws Exception {
         final BatchUpdate<Entity> batchUpdate = new BatchUpdate<>(
-            ConnectionManager.from(conSupplier, conDisposer),
+            conMgr,
             psCreator,
             psMapping,
             2,
@@ -104,12 +118,12 @@ class BatchUpdateTest {
         verify(ps, new Times(5)).executeBatch();
         verify(ps, ONCE).close();
 
-        verify(conSupplier, ONCE).get();
-        verify(conDisposer, ONCE).dispose(con, false);
+        verify(conMgr, ONCE).get();
+        verify(conMgr, ONCE).dispose(con, false);
         verify(psCreator, ONCE).create(con);
         verify(psMapping, new Times(10)).mapPrepared(eq(ps), any());
 
-        verifyNoMoreInteractions(ps, con, conSupplier, conDisposer, psCreator, psMapping);
+        verifyNoMoreInteractions(ps, con, conMgr, psCreator, psMapping);
     }
 
     @Test
@@ -117,7 +131,7 @@ class BatchUpdateTest {
         reset(ps);
         when(ps.executeBatch()).thenThrow(new SQLException("Oops"));
         final BatchUpdate<Entity> batchUpdate = BatchUpdate.create(
-            ConnectionManager.from(conSupplier, conDisposer),
+            conMgr,
             psCreator,
             psMapping
         );
@@ -145,12 +159,12 @@ class BatchUpdateTest {
         verify(ps, ONCE).executeBatch();
         verify(ps, ONCE).close();
 
-        verify(conSupplier, ONCE).get();
-        verify(conDisposer, ONCE).dispose(con, true);
+        verify(conMgr, ONCE).get();
+        verify(conMgr, ONCE).dispose(con, true);
         verify(psCreator, ONCE).create(con);
         verify(psMapping, TWICE).mapPrepared(eq(ps), any());
 
-        verifyNoMoreInteractions(ps, con, conSupplier, conDisposer, psCreator, psMapping);
+        verifyNoMoreInteractions(ps, con, conMgr, psCreator, psMapping);
     }
 
     @Test
@@ -204,13 +218,13 @@ class BatchUpdateTest {
 
         verify(dataSource, new Times(3)).getConnection();
 
-        verifyNoMoreInteractions(ps, dataSource, conSupplier, conDisposer, psCreator, psMapping);
+        verifyNoMoreInteractions(ps, dataSource, conMgr, psCreator, psMapping);
     }
 
     @Test
     void concurrentUsage() {
         final BatchUpdate<Entity> batchUpdate = BatchUpdate.create(
-            ConnectionManager.from(conSupplier, conDisposer),
+            conMgr,
             psCreator,
             psMapping
         );
@@ -229,7 +243,7 @@ class BatchUpdateTest {
     void closePSFailure() throws Exception {
         doThrow(new SQLException("Oops")).when(ps).close();
         final BatchUpdate<Entity> batchUpdate = BatchUpdate.create(
-            ConnectionManager.from(conSupplier, conDisposer),
+            conMgr,
             psCreator,
             psMapping
         );
@@ -238,14 +252,13 @@ class BatchUpdateTest {
             .expectSubscription()
             .expectNextCount(1)
             .verifyError();
-//            .verifyErrorMessage("Oops");
     }
 
     @Test
     void closeConFailure() throws Exception {
         doThrow(new SQLException("Oops")).when(con).close();
         final BatchUpdate<Entity> batchUpdate = BatchUpdate.create(
-            ConnectionManager.from(conSupplier, conDisposer),
+            conMgr,
             psCreator,
             psMapping
         );

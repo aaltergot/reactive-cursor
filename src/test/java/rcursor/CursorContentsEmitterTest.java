@@ -16,9 +16,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.internal.verification.Times;
 import org.mockito.stubbing.OngoingStubbing;
-import rcursor.jdbc.ConnectionDisposer;
 import rcursor.jdbc.ConnectionManager;
-import rcursor.jdbc.ConnectionSupplier;
 import rcursor.jdbc.PSCreator;
 import rcursor.jdbc.RSMapping;
 import reactor.core.publisher.Flux;
@@ -26,7 +24,6 @@ import reactor.test.StepVerifier;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
-import static rcursor.Entity.mapEntity;
 
 /**
  * CursorContentsEmitterTest.
@@ -39,8 +36,7 @@ class CursorContentsEmitterTest {
     private static final Times TWICE = new Times(2);
 
     private Connection con;
-    private ConnectionSupplier conSupplier;
-    private ConnectionDisposer conDisposer;
+    private ConnectionManager conMgr;
     private PSCreator psCreator;
     private RSMapping<Entity> rsMapping;
     private PreparedStatement ps;
@@ -53,21 +49,43 @@ class CursorContentsEmitterTest {
     }
 
     @BeforeEach
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({"Convert2Lambda", "Anonymous2MethodRef"})
     void beforeEach() throws Exception {
         con = mock(Connection.class);
-        conSupplier = mock(ConnectionSupplier.class);
-        conDisposer = mock(ConnectionDisposer.class);
-        psCreator = mock(PSCreator.class);
-        rsMapping = mock(RSMapping.class);
+        // cannot spy lambdas
+        conMgr = spy(
+            new ConnectionManager() {
+                @Override
+                public void dispose(
+                    final Connection con,
+                    final boolean wasError
+                ) throws SQLException {
+                    con.close();
+                }
+                @Override
+                public Connection get() {
+                    return con;
+                }
+            }
+        );
+        psCreator = spy(
+            new PSCreator() {
+                @Override
+                public PreparedStatement create(final Connection con) throws SQLException {
+                    return con.prepareStatement(SQL);
+                }
+            }
+        );
+        rsMapping = spy(
+            new RSMapping<Entity>() {
+                @Override
+                public Entity mapNext(final ResultSet rs) throws SQLException {
+                    return Entity.mapEntity(rs);
+                }
+            }
+        );
         ps = mock(PreparedStatement.class);
         rs = mock(ResultSet.class);
-        when(conSupplier.get()).thenReturn(con);
-        doAnswer(inv -> { ((Connection) inv.getArgument(0)).close(); return null; })
-            .when(conDisposer).dispose(any(), anyBoolean());
-        doAnswer(inv -> ((Connection) inv.getArgument(0)).prepareStatement(SQL))
-            .when(psCreator).create(any());
-        doAnswer(inv -> mapEntity((inv.getArgument(0)))).when(rsMapping).mapNext(any());
         when(con.prepareStatement(SQL)).thenReturn(ps);
         when(ps.execute()).thenReturn(true);
         when(ps.getResultSet()).thenReturn(rs);
@@ -91,7 +109,7 @@ class CursorContentsEmitterTest {
     void successSync() throws Exception {
         setupResultSetRows(1);
         final CursorContentsEmitter<Entity> emitter = new CursorContentsEmitter<>(
-            ConnectionManager.from(conSupplier, conDisposer),
+            conMgr,
             psCreator,
             rsMapping,
             Runnable::run,
@@ -115,18 +133,18 @@ class CursorContentsEmitterTest {
         verify(rs, ONCE).getString(1);
         verify(rs, ONCE).close();
 
-        verify(conSupplier, ONCE).get();
-        verify(conDisposer, ONCE).dispose(con, false);
+        verify(conMgr, ONCE).get();
+        verify(conMgr, ONCE).dispose(con, false);
         verify(rsMapping, ONCE).mapNext(rs);
 
-        verifyNoMoreInteractions(rs, ps, con, conSupplier, conDisposer, rsMapping);
+        verifyNoMoreInteractions(rs, ps, con, conMgr, rsMapping);
     }
 
     @Test
     void successAsync() throws Exception {
         setupResultSetRows(1);
         final CursorContentsEmitter<Entity> emitter = new CursorContentsEmitter<>(
-            ConnectionManager.from(conSupplier, conDisposer),
+            conMgr,
             psCreator,
             rsMapping,
             EXECUTOR,
@@ -150,11 +168,11 @@ class CursorContentsEmitterTest {
         verify(rs, ONCE).getString(1);
         verify(rs, ONCE).close();
 
-        verify(conSupplier, ONCE).get();
-        verify(conDisposer, ONCE).dispose(con, false);
+        verify(conMgr, ONCE).get();
+        verify(conMgr, ONCE).dispose(con, false);
         verify(rsMapping, ONCE).mapNext(rs);
 
-        verifyNoMoreInteractions(rs, ps, con, conSupplier, conDisposer, rsMapping);
+        verifyNoMoreInteractions(rs, ps, con, conMgr, rsMapping);
     }
 
     @Test
@@ -168,7 +186,7 @@ class CursorContentsEmitterTest {
             .thenThrow(new SQLException("Oops"));
 
         final CursorContentsEmitter<Entity> emitter = CursorContentsEmitter.create(
-            ConnectionManager.from(conSupplier, conDisposer),
+            conMgr,
             psCreator,
             rsMapping,
             EXECUTOR
@@ -190,11 +208,11 @@ class CursorContentsEmitterTest {
         verify(rs, TWICE).getString(1);
         verify(rs, ONCE).close();
 
-        verify(conSupplier, ONCE).get();
-        verify(conDisposer, ONCE).dispose(con, true);
+        verify(conMgr, ONCE).get();
+        verify(conMgr, ONCE).dispose(con, true);
         verify(rsMapping, TWICE).mapNext(rs);
 
-        verifyNoMoreInteractions(rs, ps, con, conSupplier, conDisposer, rsMapping);
+        verifyNoMoreInteractions(rs, ps, con, conMgr, rsMapping);
     }
 
     @Test
@@ -202,7 +220,7 @@ class CursorContentsEmitterTest {
         reset(ps);
         when(ps.execute()).thenThrow(new SQLException("Oops"));
         final CursorContentsEmitter<Entity> emitter = CursorContentsEmitter.create(
-            ConnectionManager.from(conSupplier, conDisposer),
+            conMgr,
             psCreator,
             rsMapping,
             EXECUTOR
@@ -217,10 +235,10 @@ class CursorContentsEmitterTest {
         verify(ps, ONCE).execute();
         verify(ps, ONCE).close();
 
-        verify(conSupplier, ONCE).get();
-        verify(conDisposer, ONCE).dispose(con, true);
+        verify(conMgr, ONCE).get();
+        verify(conMgr, ONCE).dispose(con, true);
 
-        verifyNoMoreInteractions(rs, ps, con, conSupplier, conDisposer, rsMapping);
+        verifyNoMoreInteractions(rs, ps, con, conMgr, rsMapping);
     }
 
     @Test
@@ -228,7 +246,7 @@ class CursorContentsEmitterTest {
         reset(con);
         when(con.prepareStatement(SQL)).thenThrow(new SQLException("Oops"));
         final CursorContentsEmitter<Entity> emitter = CursorContentsEmitter.create(
-            ConnectionManager.from(conSupplier, conDisposer),
+            conMgr,
             psCreator,
             rsMapping,
             EXECUTOR
@@ -240,17 +258,17 @@ class CursorContentsEmitterTest {
         verify(con, ONCE).prepareStatement(SQL);
         verify(con, ONCE).close();
 
-        verify(conSupplier, ONCE).get();
-        verify(conDisposer, ONCE).dispose(con, true);
+        verify(conMgr, ONCE).get();
+        verify(conMgr, ONCE).dispose(con, true);
 
-        verifyNoMoreInteractions(rs, ps, con, conSupplier, conDisposer, rsMapping);
+        verifyNoMoreInteractions(rs, ps, con, conMgr, rsMapping);
     }
 
     @Test
     void sinkFailure() throws Exception {
         setupResultSetRows(2);
         final CursorContentsEmitter<Entity> emitter = CursorContentsEmitter.create(
-            ConnectionManager.from(conSupplier, conDisposer),
+            conMgr,
             psCreator,
             rsMapping,
             EXECUTOR
@@ -286,18 +304,18 @@ class CursorContentsEmitterTest {
         verify(rs, TWICE).getString(1);
         verify(rs, ONCE).close();
 
-        verify(conSupplier, ONCE).get();
-        verify(conDisposer, ONCE).dispose(con, false);
+        verify(conMgr, ONCE).get();
+        verify(conMgr, ONCE).dispose(con, false);
         verify(rsMapping, TWICE).mapNext(rs);
 
-        verifyNoMoreInteractions(rs, ps, con, conSupplier, conDisposer, rsMapping);
+        verifyNoMoreInteractions(rs, ps, con, conMgr, rsMapping);
     }
 
     @Test
     void sinkCancel() throws Exception {
         setupResultSetRows(2);
         final CursorContentsEmitter<Entity> emitter = CursorContentsEmitter.create(
-            ConnectionManager.from(conSupplier, conDisposer),
+            conMgr,
             psCreator,
             rsMapping,
             EXECUTOR
@@ -321,11 +339,11 @@ class CursorContentsEmitterTest {
         verify(rs, TWICE).getString(1);
         verify(rs, ONCE).close();
 
-        verify(conSupplier, ONCE).get();
-        verify(conDisposer, ONCE).dispose(con, false);
+        verify(conMgr, ONCE).get();
+        verify(conMgr, ONCE).dispose(con, false);
         verify(rsMapping, TWICE).mapNext(rs);
 
-        verifyNoMoreInteractions(rs, ps, con, conSupplier, conDisposer, rsMapping);
+        verifyNoMoreInteractions(rs, ps, con, conMgr, rsMapping);
     }
 
     @Test
@@ -360,6 +378,6 @@ class CursorContentsEmitterTest {
 
         verify(rsMapping, ONCE).mapNext(rs);
 
-        verifyNoMoreInteractions(rs, ps, con, conSupplier, conDisposer, rsMapping);
+        verifyNoMoreInteractions(rs, ps, con, conMgr, rsMapping);
     }
 }
