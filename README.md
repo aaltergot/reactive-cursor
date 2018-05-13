@@ -51,3 +51,30 @@ One may want to get and inspect batch update results:
     // inspect progress on the fly
     BatchUpdate.State state = batchUpdate.currentState();
 ```
+
+### Elasticsearch bulk index
+```
+    Flux<Entity> entities = ...
+    RestHighLevelClient esClient = ...
+    final ElasticsearchBulkIndex<Entity> esBulk =
+        ElasticsearchBulkIndex.create(
+            esClient::bulk,
+            BulkRequest::new,
+            entity -> new IndexableItem(...)
+        );
+    entities.compose(esBulk).subscribe();
+```
+
+### Integration tests
+Integration tests (IT) are enabled via `enable-it` Maven profile.  
+it uses [docker-maven-plugin](https://github.com/fabric8io/docker-maven-plugin) under the hood to run `postgres` and `elasticsearch`.  
+Tests rely on system properties set by [maven-failsafe-plugin](http://maven.apache.org/surefire/maven-failsafe-plugin/examples/system-properties.html), e.g. `rcursor.it.pg.port`, `rcursor.it.es.port` to use randomly assigned ports (this technique helps to avoid port binding failure).
+To run the whole tests suite (unit+integration):
+```
+mvn verify -P enable-it
+```
+To play with IT having dependencies (postgres, ES) already running in background just configure correct sys props. Example:
+```
+mvn failsafe:integration-test failsafe:verify -P enable-it -Drcursor.it.pg.port=5432 -Drcursor.it.es.port=9200
+```
+Also defaults are provided by _rcursor.it.Util_ thus `-Drcursor.it.pg.port=5432 -Drcursor.it.es.port=9200` may be omitted.

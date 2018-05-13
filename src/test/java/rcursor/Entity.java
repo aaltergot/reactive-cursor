@@ -4,12 +4,18 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Objects;
+import org.elasticsearch.common.xcontent.json.JsonXContent;
+import rcursor.elasticsearch.IndexableItem;
 import reactor.core.publisher.Flux;
 
 /**
  * Entity.
  */
 public class Entity {
+
+    public static String ES_INDEX = "entities";
+    public static String ES_TYPE = "entity";
+
     public String id;
 
     public Entity(final String id) {
@@ -25,6 +31,16 @@ public class Entity {
         final Entity entity
     ) throws SQLException {
         ps.setString(1, entity.id);
+    }
+
+    public static IndexableItem toIndexable(final Entity item) throws Exception {
+        return new IndexableItem(
+            ES_INDEX, ES_TYPE, item.id,
+            JsonXContent.contentBuilder()
+                .startObject()
+                .field("test", "entity-" + item.id)
+                .endObject()
+        );
     }
 
     public static Flux<Entity> make(final int count) {
