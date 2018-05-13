@@ -77,4 +77,5 @@ To play with IT having dependencies (postgres, ES) already running in background
 ```
 mvn failsafe:integration-test failsafe:verify -P enable-it -Drcursor.it.pg.port=5432 -Drcursor.it.es.port=9200
 ```
-Also defaults are provided by _rcursor.it.Util_ thus `-Drcursor.it.pg.port=5432 -Drcursor.it.es.port=9200` may be omitted.
+Also defaults are provided by _rcursor.it.Util_ thus `-Drcursor.it.pg.port=5432 -Drcursor.it.es.port=9200` may be omitted.  
+IT source code may give good examples how to use this library. Highly [recommended for inspection](src/test/java/rcursor/it).
